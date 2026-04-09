@@ -10,17 +10,18 @@ import strawberry
 # ──────────────────────────────────────────
 
 @strawberry.enum
-class ReviewStatus(enum.Enum):
-    PENDING = "PENDING"
+class PRReviewStatus(enum.Enum):
+    PENDING   = "PENDING"
     ANALYZING = "ANALYZING"
-    COMPLETE = "COMPLETE"
+    POSTED    = "POSTED"
+    FAILED    = "FAILED"
 
 
 @strawberry.enum
 class Severity(enum.Enum):
     CRITICAL = "CRITICAL"
-    MAJOR = "MAJOR"
-    MINOR = "MINOR"
+    MAJOR    = "MAJOR"
+    MINOR    = "MINOR"
 
 
 # ──────────────────────────────────────────
@@ -28,31 +29,33 @@ class Severity(enum.Enum):
 # ──────────────────────────────────────────
 
 @strawberry.type
-class RepoType:
-    id: int
-    url: str
-    name: str
-    created_at: datetime
-
-
-@strawberry.type
 class IssueType:
-    id: int
-    review_id: int
-    severity: Severity
-    file_path: str
-    line_number: Optional[int]
-    description: str
+    id:            int
+    review_id:     int
+    severity:      Severity
+    file_path:     str
+    line_number:   Optional[int]
+    description:   str
     suggested_fix: Optional[str]
 
 
 @strawberry.type
-class ReviewType:
-    id: int
-    repo_id: int
-    status: ReviewStatus
+class ReviewResult:
+    """A PR review with its nested list of issues."""
+    id:         int
+    repo_id:    int
+    pr_number:  int
+    pr_title:   Optional[str]
+    status:     PRReviewStatus
     created_at: datetime
-    issues: list[IssueType] = strawberry.field(default_factory=list)
+    issues:     list[IssueType] = strawberry.field(default_factory=list)
+
+
+@strawberry.type
+class RepoType:
+    id:                    int
+    github_repo_full_name: str
+    created_at:            datetime
 
 
 # ──────────────────────────────────────────
@@ -60,6 +63,6 @@ class ReviewType:
 # ──────────────────────────────────────────
 
 @strawberry.input
-class SubmitReviewInput:
-    repo_url: str
-    code: str
+class TriggerReviewInput:
+    repo_full_name: str
+    pr_number:      int

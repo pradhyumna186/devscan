@@ -1,14 +1,14 @@
 """
-Redis cache service for code review results.
+Redis cache service.
 
-Cache key strategy: sha256(code) → review_id (int)
-This lets us skip re-analysis for identical code submissions.
+Cache key strategy: sha256(diff) → JSON-serialized list of issue dicts.
+Skips redundant LLM calls for PRs whose diff hasn't changed.
 """
 
 import hashlib
 import json
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import redis.asyncio as aioredis
 
@@ -20,56 +20,57 @@ _redis_client: aioredis.Redis | None = None
 def _get_client() -> aioredis.Redis:
     global _redis_client
     if _redis_client is None:
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         _redis_client = aioredis.from_url(redis_url, decode_responses=True)
     return _redis_client
 
 
-def _code_hash(code: str) -> str:
-    """Return a hex SHA-256 digest of the submitted code string."""
-    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+def _diff_hash(diff: str) -> str:
+    """Return a hex SHA-256 digest of the diff string."""
+    return hashlib.sha256(diff.encode("utf-8")).hexdigest()
 
 
-async def get_cached_review(code: str) -> Optional[int]:
+async def get_cached_review(diff_hash: str) -> Optional[list[dict[str, Any]]]:
     """
-    Look up a cached review ID for the given code.
+    Check if this diff was already reviewed.
+
+    Args:
+        diff_hash: Pre-computed SHA-256 hex digest of the diff.
 
     Returns:
-        The review ID (int) if a cache hit exists, otherwise None.
+        Cached list of issue dicts, or None on cache miss.
     """
     client = _get_client()
-    key = f"devscan:review:{_code_hash(code)}"
-    value = await client.get(key)
+    key    = f"devscan:diff:{diff_hash}"
+    value  = await client.get(key)
     if value is None:
         return None
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
         return None
 
 
-async def cache_review(code: str, review_id: int) -> None:
+async def cache_review(diff_hash: str, issues: list[dict[str, Any]]) -> None:
     """
-    Store a review_id in Redis keyed by the hash of the code.
+    Cache the review results for a given diff hash.
 
     Args:
-        code:      The source code that was reviewed.
-        review_id: The DB id of the resulting Review record.
+        diff_hash: SHA-256 hex digest of the diff.
+        issues:    List of issue dicts to cache.
     """
     client = _get_client()
-    key = f"devscan:review:{_code_hash(code)}"
-    await client.set(key, str(review_id), ex=CACHE_TTL_SECONDS)
+    key    = f"devscan:diff:{diff_hash}"
+    await client.set(key, json.dumps(issues), ex=CACHE_TTL_SECONDS)
 
 
-async def invalidate_cached_review(code: str) -> None:
-    """Remove a cached review entry (e.g. if re-analysis is forced)."""
-    client = _get_client()
-    key = f"devscan:review:{_code_hash(code)}"
-    await client.delete(key)
+def compute_diff_hash(diff: str) -> str:
+    """Public helper — compute the hash used as the cache key."""
+    return _diff_hash(diff)
 
 
 async def close() -> None:
-    """Close the Redis connection pool gracefully."""
+    """Close the Redis connection pool on shutdown."""
     global _redis_client
     if _redis_client is not None:
         await _redis_client.aclose()

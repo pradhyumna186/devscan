@@ -1,0 +1,29 @@
+# Environment — never commit real secrets
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Alembic generated versions (keep env.py and script.py.mako, ignore auto-gen)
+# Remove next line if you want to commit migrations
+# migrations/versions/
+
+# Docker
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store

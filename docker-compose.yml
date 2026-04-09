@@ -1,5 +1,8 @@
 version: "3.9"
 
+# GitHub webhook: POST http://<your-server>:8000/webhook/github
+# GraphQL playground: http://localhost:8000/graphql
+
 services:
   db:
     image: postgres:15-alpine
@@ -9,7 +12,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devscan_pass}
       POSTGRES_DB: ${POSTGRES_DB:-devscan}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -38,14 +41,16 @@ services:
     container_name: devscan_app
     env_file: .env
     ports:
-      - "8000:8000"
+      - "8000:8000"   # webhook: /webhook/github  |  graphql: /graphql
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ./app:/app/app
+      - ./app:/app/app                          # hot-reload app code
+      - ./migrations:/app/migrations            # persist generated migration files
+      - ./alembic.ini:/app/alembic.ini:ro       # alembic config
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
